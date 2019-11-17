@@ -1,6 +1,12 @@
 #include <string>
 #include <iostream>
 
+//HEADER FOR SERIAL COM
+#include <fcntl.h> // Contains file controls like O_RDWR
+#include <errno.h> // Error integer and strerror() function
+#include <termios.h> // Contains POSIX terminal control definitions
+#include <unistd.h> // write(), read(), close()
+
 class GPRMC{
 public:
     bool translate(std::string wordinput){ //creation
@@ -78,7 +84,9 @@ private:
     std::string substringout[13];
 };
 
-void findseparatorindex(int separatornum, char separator, int *indexarray, std::string wordinput, std::string *substringout);
+int findseparatorindex(int separatornum, char separator, int *indexarray, std::string wordinput, std::string *substringout);
+int connectSerial(int *handler, std::string port);
+int checkSerial(int handler, std::string *word);
 
 int main(int argc, char *argv[])
 {
@@ -89,14 +97,13 @@ int main(int argc, char *argv[])
     
     std::string subexample[13];
 
-    //find separator index
-    findseparatorindex(12, ',', comma_pos, example, subexample);
+//    //find and print indexes
+//    findseparatorindex(12, ',', comma_pos, example, subexample);
+//    for (int i = 0; i<12; i++){
+//        std::cout<<comma_pos[i]<<'\t'<<subexample[i]<<'\n';
+//    }
 
-    //print indexes
-    for (int i = 0; i<12; i++){
-        std::cout<<comma_pos[i]<<'\t'<<subexample[i]<<'\n';
-    }
-
+    //parse message
     GPRMC in;
     in.translate(example);
     std::cout<<in.translate(example)<<'\n';
@@ -105,9 +112,21 @@ int main(int argc, char *argv[])
     std::cout<<std::to_string(in.getSpeed())<<'\n';
     std::cout<<std::to_string(in.getCourse())<<'\n';
     std::cout<<"exit\n";
+
+    //read Serial
+    int fd = 0;
+    std::string fromSerial;
+    connectSerial(&fd, "/dev/ttyUSB0");
+    while (1) {
+        checkSerial(fd,&fromSerial);
+        std::cout<<fromSerial<<'\n';
+
+        //parse message from serial here :
+//        in.translate(fromSerial);
+    }
 }
 
-void findseparatorindex(int separatornum, char separator, int *indexarray, std::string wordinput, std::string *substringout){
+int findseparatorindex(int separatornum, char separator, int *indexarray, std::string wordinput, std::string *substringout){
     //find index
     indexarray[0]=wordinput.find(separator);
     for (int i = 1; i<separatornum; i++){
@@ -118,6 +137,43 @@ void findseparatorindex(int separatornum, char separator, int *indexarray, std::
     for (int i=1; i<=12; i++) {
         substringout[i] = wordinput.substr(indexarray[i-1]+1, indexarray[i]-indexarray[i-1]-1);
     }
+    return 0;
+}
+
+int connectSerial(int *handler, std::string port){
+
+    *handler = open(port.c_str(), O_RDWR|O_NOCTTY);
+    if (*handler < 0) {
+        std::cout<<"Serial Error "<<errno << '\n';
+    }
+    else {
+        std::cout<<"connected to" <<port <<'\n';
+    }
+}
+
+int checkSerial(int handler, std::string *word){
+    if (handler<=0) return 1;
+
+    char charbuff[1];
+    std::string wordstemp="";
+    bool startwordfound = 0;
+    while(read(handler, charbuff, 1)>0){
+
+        if (charbuff[0] == '$'){
+            startwordfound = 1;
+            wordstemp="";
+        }
+        else if (startwordfound && charbuff[0] != '\n'){
+            wordstemp = wordstemp + charbuff[0];
+        }
+        else if (startwordfound && charbuff[0] == '\n' && wordstemp!="") {
+
+            *word = wordstemp;
+
+            break;
+        }
+    }
+    return 0;
 }
 
 //REFF:
